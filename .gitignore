@@ -1,0 +1,5 @@
+*.o
+*.txt
+*.vtk
+*.pkl
+*.png
