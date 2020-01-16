@@ -1,0 +1,93 @@
+{% set name = "openmdao" %}
+{% set version = "2.6.0" %}
+
+package:
+  name: "{{ name|lower }}"
+  version: "{{ version }}"
+
+source:
+  url: https://pypi.io/packages/source/{{ name[0] }}/{{ name }}/{{ name }}-{{ version }}.tar.gz
+  sha256: 8c6e41c8119cf8645181d18f71d11685dbe446ac768f30edeb3ddbc8f566817b
+
+build:
+  number: 0
+  entry_points:
+    - wingproj=openmdao.devtools.wingproj:run_wing
+    - webview=openmdao.devtools.webview:webview_argv
+    - run_test=openmdao.devtools.run_test:run_test
+    - openmdao=openmdao.utils.om:openmdao_cmd
+  script: "{{ PYTHON }} -m pip install . --no-deps --ignore-installed -vvv "
+
+requirements:
+  host:
+    - networkx >=2.0
+    - numpy
+    - pip
+    - pydoe2
+    - pyparsing
+    - python
+    - scipy
+    - setuptools
+    - six
+  run:
+    - networkx >=2.0
+    - numpy
+    - pydoe2
+    - pyparsing
+    - python
+    - scipy
+    - setuptools
+    - six
+
+test:
+  imports:
+    - openmdao
+    - openmdao.approximation_schemes
+    - openmdao.code_review
+    - openmdao.components
+    - openmdao.core
+    - openmdao.devtools
+    - openmdao.devtools.iprofile_app
+    - openmdao.devtools.problem_viewer
+    - openmdao.devtools.xdsm_viewer
+    - openmdao.docs
+    - openmdao.docs._exts
+    - openmdao.docs._utils
+    - openmdao.drivers
+    - openmdao.error_checking
+    - openmdao.jacobians
+    - openmdao.matrices
+    - openmdao.proc_allocators
+    - openmdao.recorders
+    - openmdao.solvers
+    - openmdao.solvers.linear
+    - openmdao.solvers.linesearch
+    - openmdao.solvers.nonlinear
+    - openmdao.surrogate_models
+    - openmdao.surrogate_models.nn_interpolators
+    - openmdao.test_suite
+    - openmdao.test_suite.components
+    - openmdao.test_suite.groups
+    - openmdao.test_suite.test_examples
+    - openmdao.test_suite.test_examples.beam_optimization
+    - openmdao.test_suite.test_examples.beam_optimization.components
+    - openmdao.utils
+    - openmdao.vectors
+  commands:
+    - wingproj --help
+    - webview --help
+    - run_test --help
+    - openmdao --help
+
+about:
+  home: http://openmdao.org
+  license: Apache Software
+  license_family: APACHE
+  license_file: 
+  summary: OpenMDAO v2 framework infrastructure
+  doc_url: 
+  dev_url: 
+
+extra:
+  recipe-maintainers:
+    - your-github-id-here
