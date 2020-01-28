@@ -28,62 +28,61 @@ loadFolder0 = "./save_elastic/"  # NB: must be3 equal to run_main_da.py
 
 def main(tot_iter):
 
-  # TODO: folder path and restart # must be manually input each time
-  loadFolder   = loadFolder0 + ""
-  restart_iter = 26
+    # TODO: folder path and restart # must be manually input each time
+    loadFolder   = loadFolder0 + ""
+    restart_iter = 26
 
-  import os
-  try:
-    os.mkdir(loadFolder + 'restart_' + str(restart_iter))
-  except:
-      pass
+    import os
+    try:
+        os.mkdir(loadFolder + 'restart_' + str(restart_iter))
+    except:
+        pass
 
-  try:
-    os.mkdir(loadFolder + 'restart_' + str(restart_iter) + '/figs')
-  except:
-      pass
+    try:
+        os.mkdir(loadFolder + 'restart_' + str(restart_iter) + '/figs')
+    except:
+        pass
 
-  inspctFlag = False
-  if tot_iter < 0:
-    inspctFlag = True
-    tot_iter = restart_iter + 1
+    inspctFlag = False
+    if tot_iter < 0:
+      inspctFlag = True
+      tot_iter = restart_iter + 1
 
-  # print statement
-  print(locals())
-  print("solving single physics compliance problem")
+    # print statement
+    print(locals())
+    print("solving single physics compliance problem")
 
-  print("restarting from %d ..." % restart_iter)
-  fname0 = loadFolder + 'phi%03i.pkl' % restart_iter
+    print("restarting from %d ..." % restart_iter)
+    fname0 = loadFolder + 'phi%03i.pkl' % restart_iter
 
-  with open(fname0, 'rb') as f:
-    raw = pickle.load(f)
+    with open(fname0, 'rb') as f:
+        raw = pickle.load(f)
 
-  phi0 = raw['phi']
+    phi0 = raw['phi']
 
-  fname0 = loadFolder0 + 'const.pkl'
-  with open(fname0, 'rb') as f:
-    raw = pickle.load(f)
+    fname0 = loadFolder0 + 'const.pkl'
+    with open(fname0, 'rb') as f:
+        raw = pickle.load(f)
 
-  # nodes = raw['mesh']
-  nodes = raw['nodes']
-  elem = raw['elem']
-  GF_e = raw['GF_e']
-  BCid_e = raw['BCid_e']
-  E = raw['E']
-  nu = raw['nu']
-  f = raw['f']
-  nelx = raw['nelx']
-  nely = raw['nely']
-  length_x = raw['length_x']
-  length_y = raw['length_y']
-  coord_e = raw['coord_e']
-  tol_e = raw['tol_e']
+    # nodes = raw['mesh']
+    nodes = raw['nodes']
+    elem = raw['elem']
+    GF_e = raw['GF_e']
+    BCid_e = raw['BCid_e']
+    E = raw['E']
+    nu = raw['nu']
+    f = raw['f']
+    nelx = raw['nelx']
+    nely = raw['nely']
+    length_x = raw['length_x']
+    length_y = raw['length_y']
+    coord_e = raw['coord_e']
+    tol_e = raw['tol_e']
 
-  # TODO: EDIT FROM THIS POINT ON
 
-    ########################################################
-    #################     FEA     ####################
-    ########################################################
+    ############################################################################
+    ###########################         FEA          ###########################
+    ############################################################################
     # NB: only Q4 elements + integer-spaced mesh are assumed
 
     ls2fe_x = length_x/float(nelx)
@@ -95,32 +94,31 @@ def main(tot_iter):
     nELEM = nelx * nely
     nNODE = num_nodes_x * num_nodes_y
 
-    # Declare FEA object (OpenLSTO_FEA) ======================
+    # Declare FEA object (OpenLSTO_FEA) ==============================
     fea_solver = py_FEA(lx=length_x, ly=length_y,
                         nelx=nelx, nely=nely, element_order=2)
     [node, elem, elem_dof] = fea_solver.get_mesh()
 
-    # validate the mesh
+    ## validate the mesh
     if nELEM != elem.shape[0]:
         error("error found in the element")
     if nNODE != node.shape[0]:
         error("error found in the node")
 
-    nDOF_t = nNODE * 1  # each node has one temperature DOF
     nDOF_e = nNODE * 2  # each node has two displacement DOFs
 
-    # constitutive properties =================================
+    # constitutive properties ========================================
     fea_solver.set_material(E=E, nu=nu, rho=1.0)
 
-    # Boundary Conditions =====================================
+    # Boundary Conditions ============================================
     fea_solver.set_boundary(coord=coord_e, tol=tol_e)
     BCid_e = fea_solver.get_boundary()
     nDOF_e_wLag = nDOF_e + len(BCid_e)  # elasticity DOF
-    nDOF_t_wLag = nDOF_t + len(BCid_t)  # temperature DOF
 
-    ########################################################
-    #################     LSM     ####################
-    ########################################################
+
+    ############################################################################
+    ###########################         LSM          ###########################
+    ############################################################################
     movelimit = 0.5
 
     # Declare Level-set object
@@ -132,115 +130,55 @@ def main(tot_iter):
 
     lsm_solver.reinitialise()
 
-    for i_HJ in range(restart_iter, tot_iter):
 
+    ############################################################################
+    ########################         T.O. LOOP          ########################
+    ############################################################################
+    for i_HJ in range(restart_iter, tot_iter):
         (bpts_xy, areafraction, seglength) = lsm_solver.discretise()
 
-        ########################################################
-        ###############     OpenMDAO    ################
-        ########################################################
+        # OpenMDAO ===================================================
+        ## Define Group
+        model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+            nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid = BCid_e)
 
-        # Declare Group
-        if (objectives[obj_flag] == "compliance"):
-            model = ComplianceGroup(
-                fea_solver=fea_solver,
-                lsm_solver=lsm_solver,
-                nelx=nelx,
-                nely=nely,
-                force=GF_e, movelimit=movelimit, BCid = BCid_e)
-        elif (objectives[obj_flag] == "stress"):
-            # TODO: sensitivity has not been verified yet
-            model = StressGroup(
-                fea_solver=fea_solver,
-                lsm_solver=lsm_solver,
-                nelx=nelx,
-                nely=nely,
-                force=GF_e, movelimit=movelimit,
-                pval=5.0, E=E, nu=nu)
-        elif (objectives[obj_flag] == "conduction"):
-            model = ConductionGroup(
-                fea_solver=fea_solver,
-                lsm_solver=lsm_solver,
-                nelx=nelx,
-                nely=nely,
-                force=GF_t, movelimit=movelimit,
-                K_cond=K_cond, BCid=BCid_t)
-        elif (objectives[obj_flag] == "coupled_heat"):
-            model = HeatCouplingGroup(
-                fea_solver=fea_solver,
-                lsm_solver=lsm_solver,
-                nelx=nelx,
-                nely=nely,
-                force_e=GF_e,
-                force_t=GF_t,
-                movelimit=movelimit,
-                K_cond=K_cond,
-                BCid_e=BCid_e,
-                BCid_t=BCid_t,
-                E=E, nu=nu, alpha=alpha,
-                w=0.0) # if w = 0.0, thermoelastic + conduction, if w = 1.0, conduction only
-
-        # One Problem per one OpenMDAO object
+        ## Define problem for OpenMDAO object
         prob = Problem(model)
 
-        # optimize ...
+        ## Setup the problem
         prob.driver = pyOptSparseDriver()
         prob.driver.options['optimizer'] = 'IPOPT'
         prob.driver.opt_settings['linear_solver'] = 'ma27'
-
         prob.setup(check=False)
         prob.run_model()
 
-        # Total derivative using MAUD =====================
+        ## Total derivative using MAUD
         total = prob.compute_totals()
-        if (objectives[obj_flag] == "compliance"):
-            ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
-            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
-        elif (objectives[obj_flag] == "stress"):
-            ff = total['pnorm_comp.pnorm', 'inputs_comp.Vn'][0]
-            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
-        elif (objectives[obj_flag] == "conduction"):
-            ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
-            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
-        elif (objectives[obj_flag] == "coupled_heat"):
-            ff = total['objective_comp.y', 'inputs_comp.Vn'][0]
-            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
+        ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
+        gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
 
+        ## Assign object function sensitivities
         nBpts = int(bpts_xy.shape[0])
-        # # WIP checking sensitivity 10/23
-        Sf = -ff[:nBpts] # equal to M2DO-perturbation
-        Cf = np.multiply(Sf, seglength)
+        Sf = -ff[:nBpts]                # equal to M2DO-perturbation
+        Cf = np.multiply(Sf, seglength) # Shape sensitivity (integral coefficients)
 
+        ## Assign constraint sensitivities
         Sg = -gg[:nBpts]
-        Cg = np.multiply(Sf, seglength)
-        # ## WIP
+        Sg[Sg < - 1.5] = -1.5 # apply caps (bracketing) to constraint sensitivities
+        Sg[Sg > 0.5]   =  0.5 # apply caps (bracketing) to constraint sensitivities
+        Cg = np.multiply(Sg, seglength) # Shape sensitivity (integral coefficients)
 
-        # previous ver.
-        # Cf = -ff[:nBpts]
-        # Cg = -gg[:nBpts]
-
-        # Sf = np.divide(Cf, seglength)
-        # Sg = np.divide(Cg, seglength)
-
-        # bracketing Sf and Sg
-        Sg[Sg < - 1.5] = -1.5
-        Sg[Sg > 0.5] = 0.5
-        # Sg[:] = -1.0
-        Cg = np.multiply(Sg, seglength)
-
-        ########################################################
-        ##############    suboptimize     ################
-        ########################################################
+        # Suboptimize ================================================
         if 1:
-            suboptim = Solvers(bpts_xy=bpts_xy, Sf=Sf, Sg=Sg, Cf=Cf, Cg=Cg, length_x=length_x,
-                            length_y=length_y, areafraction=areafraction, movelimit=movelimit)
+            suboptim = Solvers(bpts_xy=bpts_xy, Sf=Sf, Sg=Sg, Cf=Cf, Cg=Cg,
+                length_x=length_x, length_y=length_y, areafraction=areafraction,
+                movelimit=movelimit)
             # suboptimization
             if 1:  # simplex
                 Bpt_Vel = suboptim.simplex(isprint=False)
             else:  # bisection..
                 Bpt_Vel = suboptim.bisection(isprint=False)
             timestep = 1.0
-
         elif 1: # works okay now.
             bpts_sens = np.zeros((nBpts,2))
             # issue: scaling problem
@@ -253,8 +191,9 @@ def main(tot_iter):
             (lb2,ub2) = lsm_solver.get_Lambda_Limits()
             constraint_distance = (0.4 * nelx * nely) - areafraction.sum()
 
-            model = LSM2D_slpGroup(lsm_solver = lsm_solver, num_bpts = nBpts, ub = ub2, lb = lb2,
-                Sf = bpts_sens[:,0], Sg = bpts_sens[:,1], constraintDistance = constraint_distance, movelimit=movelimit)
+            model = LSM2D_slpGroup(lsm_solver = lsm_solver, num_bpts = nBpts,
+                b = ub2, lb = lb2, Sf = bpts_sens[:,0], Sg = bpts_sens[:,1],
+                constraintDistance = constraint_distance, movelimit=movelimit)
 
             subprob = Problem(model)
             subprob.setup()
@@ -275,7 +214,6 @@ def main(tot_iter):
             Bpt_Vel = displacements_ / timestep
             # print(timestep)
             del subprob
-
         else: # branch: perturb-suboptim
             bpts_sens = np.zeros((nBpts,2))
             # issue: scaling problem
@@ -302,7 +240,8 @@ def main(tot_iter):
                 return lsm_solver.compute_delG(displacement_np, scaled_constraintDist, 1)
 
             cons = ({'type': 'eq', 'fun': lambda x: conF_nocallback(x)})
-            res = sp_optim.minimize(objF_nocallback, np.zeros(2), method='SLSQP', options={'disp': True},
+            res = sp_optim.minimize(objF_nocallback, np.zeros(2), method='SLSQP',
+                                    options={'disp': True},
                                     bounds=((lb2[0], ub2[0]), (lb2[1], ub2[1])),
                                     constraints=cons)
 
@@ -327,57 +266,25 @@ def main(tot_iter):
 
         print ('loop %d is finished' % i_HJ)
         area = areafraction.sum()/(nelx*nely)
-        try:
-            u = prob['temp_comp.disp']
-            compliance = np.dot(u, GF_t[:nNODE])
-        except:
-            u = prob['disp_comp.disp']
-            # compliance = np.dot(u, GF_e[:nDOF_e])
-            pass
+        u = prob['disp_comp.disp']
+        compliance = np.dot(u, GF_e[:nDOF_e])
 
+        # Printing/Plotting ==========================================
         if 1:  # quickplot
             plt.figure(1)
             plt.clf()
             plt.scatter(bpts_xy[:, 0], bpts_xy[:, 1], 10)
             plt.axis("equal")
             plt.savefig(loadFolder + 'restart_' + str(restart_iter) + "/" + "figs/bpts_%d.png" % i_HJ)
-            if obj_flag == 3 or obj_flag == 2:
-                plt.figure(2)
-                plt.clf()
-                [xx, yy] = np.meshgrid(range(0,161),range(0,81))
-                plt.contourf(xx, yy,np.reshape(u, [81,161]))
-                plt.colorbar()
-                plt.axis("equal")
-                plt.scatter(bpts_xy[:, 0], bpts_xy[:, 1], 5)
-                plt.savefig(loadFolder + 'restart_' + str(restart_iter) + "/" + "figs/temp_%d.png" % i_HJ)
 
-        if (objectives[obj_flag] == "compliance" and not inspctFlag):
+        compliance = prob['compliance_comp.compliance']
+        print (compliance, area)
 
-            compliance = prob['compliance_comp.compliance']
-            print (compliance, area)
+        fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
+        fid.write(str(compliance) + ", " + str(area) + "\n")
+        fid.close()
 
-            fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
-            fid.write(str(compliance) + ", " + str(area) + "\n")
-            fid.close()
-        elif (objectives[obj_flag] == "stress" and not inspctFlag):
-            print (prob['pnorm_comp.pnorm'][0], area)
-
-            fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
-            fid.write(str(prob['pnorm_comp.pnorm'][0]) +
-                      ", " + str(area) + "\n")
-            fid.close()
-        elif (objectives[obj_flag] == "coupled_heat" and not inspctFlag):
-            obj1 = prob['objective_comp.x1'][0]
-            obj2 = prob['objective_comp.x2'][0]
-            obj = prob['objective_comp.y'][0]
-
-            print([obj1, obj2, obj,  area])
-            fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
-            fid.write(str(obj1) + ", " + str(obj2) + ", " +
-                      str(obj) + ", " + str(area) + "\n")
-            fid.close()
-
-        # Saving Phi
+        ## Saving Phi
         phi = lsm_solver.get_phi()
 
         if not inspctFlag:

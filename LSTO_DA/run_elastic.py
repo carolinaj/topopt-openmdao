@@ -65,7 +65,7 @@ def main(maxiter):
                       nelx=nelx, nely=nely, element_order=2)
   [node, elem, elem_dof] = fea_solver.get_mesh()
 
-  # validate the mesh
+  ## validate the mesh
   if nELEM != elem.shape[0]:
     error("error found in the element")
 
