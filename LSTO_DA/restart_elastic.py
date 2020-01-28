@@ -27,6 +27,7 @@ from suboptim.solvers import Solvers
 loadFolder0 = "./save_elastic/"  # NB: must be3 equal to run_main_da.py
 
 def main(tot_iter):
+    objectives = {0: "compliance", 1: "stress"}
 
     # TODO: folder path and restart # must be manually input each time
     loadFolder   = loadFolder0 + ""
@@ -48,9 +49,10 @@ def main(tot_iter):
       inspctFlag = True
       tot_iter = restart_iter + 1
 
-    # print statement
+    # Select which problem to solve
+    obj_flag = 1
     print(locals())
-    print("solving single physics compliance problem")
+    print("solving single physics %s problem" % objectives[obj_flag])
 
     print("restarting from %d ..." % restart_iter)
     fname0 = loadFolder + 'phi%03i.pkl' % restart_iter
@@ -139,8 +141,14 @@ def main(tot_iter):
 
         # OpenMDAO ===================================================
         ## Define Group
-        model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
-            nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid = BCid_e)
+        if (objectives[obj_flag] == "compliance"):
+            model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+                nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit,
+                BCid=BCid_e)
+        elif (objectives[obj_flag] == "stress"):
+            model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+                nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, pval=6.0,
+                BCid=BCid_e)
 
         ## Define problem for OpenMDAO object
         prob = Problem(model)
@@ -153,9 +161,12 @@ def main(tot_iter):
         prob.run_model()
 
         ## Total derivative using MAUD
-        total = prob.compute_totals()
-        ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
-        gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
+        if (objectives[obj_flag] == "compliance"):
+            ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
+            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
+        elif (objectives[obj_flag] == "stress"):
+            ff = total['pnorm_comp.pnorm', 'inputs_comp.Vn'][0]
+            gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
 
         ## Assign object function sensitivities
         nBpts = int(bpts_xy.shape[0])
@@ -277,12 +288,20 @@ def main(tot_iter):
             plt.axis("equal")
             plt.savefig(loadFolder + 'restart_' + str(restart_iter) + "/" + "figs/bpts_%d.png" % i_HJ)
 
-        compliance = prob['compliance_comp.compliance']
-        print (compliance, area)
+        if (objectives[obj_flag] == "compliance" and not inspctFlag):
+            compliance = prob['compliance_comp.compliance']
+            print (compliance, area)
 
-        fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
-        fid.write(str(compliance) + ", " + str(area) + "\n")
-        fid.close()
+            fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
+            fid.write(str(compliance) + ", " + str(area) + "\n")
+            fid.close()
+        elif (objectives[obj_flag] == "stress" and not inspctFlag):
+            print (prob['pnorm_comp.pnorm'][0], area)
+
+            fid = open(loadFolder + 'restart_' + str(restart_iter) + "/" + "log.txt", "a+")
+            fid.write(str(prob['pnorm_comp.pnorm'][0]) +
+                      ", " + str(area) + "\n")
+            fid.close()
 
         ## Saving Phi
         phi = lsm_solver.get_phi()
