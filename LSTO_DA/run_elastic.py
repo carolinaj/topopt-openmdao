@@ -23,6 +23,7 @@ from groups.lsm2d_SLP_Group_openlsto import LSM2D_slpGroup
 from suboptim.solvers import Solvers
 import scipy.optimize as sp_optim
 
+objectives = {0: "compliance", 1: "stress"}
 saveFolder = "./save_elastic/"
 import os
 try:
@@ -35,8 +36,10 @@ except:
   pass
 
 def main(maxiter):
+  # Select which problem to solve
+  obj_flag = 1
   print(locals())
-  print("solving single physics compliance problem")
+  print("solving single physics %s problem" % objectives[obj_flag])
 
   ############################################################################
   ###########################         FEA          ###########################
@@ -143,8 +146,13 @@ def main(maxiter):
 
     # OpenMDAO ===================================================
     ## Define Group
-    model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
-    	nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid=BCid_e)
+    if (objectives[obj_flag] == "compliance"):
+      model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+    	 nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid=BCid_e)
+    elif (objectives[obj_flag] == "stress"):
+      model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+       nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, pval=6.0,
+       BCid=BCid_e)
 
     ## Define problem for OpenMDAO object
     prob = Problem(model)
@@ -158,8 +166,12 @@ def main(maxiter):
 
     ## Total derivative using MAUD
     total = prob.compute_totals()
-    ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
-    gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
+    if (objectives[obj_flag] == "compliance"):
+      ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
+      gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
+    elif (objectives[obj_flag] == "stress"):
+      ff = total['pnorm_comp.pnorm', 'inputs_comp.Vn'][0]
+      gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
 
     ## Assign object function sensitivities
     nBpts = int(bpts_xy.shape[0])
@@ -276,12 +288,20 @@ def main(maxiter):
     	plt.savefig(saveFolder + "figs/bpts_%d.png" % i_HJ)
 
     # print([compliance[0], area])
-    compliance = prob['compliance_comp.compliance']
-    print (compliance, area)
+    if (objectives[obj_flag] == "compliance"):
+      compliance = prob['compliance_comp.compliance']
+      print (compliance, area)
 
-    fid = open(saveFolder + "log.txt", "a+")
-    fid.write(str(compliance) + ", " + str(area) + "\n")
-    fid.close()
+      fid = open(saveFolder + "log.txt", "a+")
+      fid.write(str(compliance) + ", " + str(area) + "\n")
+      fid.close()
+    elif (objectives[obj_flag] == "stress"):
+      print (prob['pnorm_comp.pnorm'][0], area)
+
+      fid = open(saveFolder + "log.txt", "a+")
+      fid.write(str(prob['pnorm_comp.pnorm'][0]) +
+                ", " + str(area) + "\n")
+      fid.close()
 
     ## Saving phi
     phi = lsm_solver.get_phi()
