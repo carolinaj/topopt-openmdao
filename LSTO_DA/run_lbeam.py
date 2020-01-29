@@ -23,7 +23,7 @@ from groups.lsm2d_SLP_Group_openlsto import LSM2D_slpGroup
 from suboptim.solvers import Solvers
 import scipy.optimize as sp_optim
 
-saveFolder = "./save_elastic/"
+saveFolder = "./save_stress/"
 import os
 try:
   os.mkdir(saveFolder)
@@ -36,17 +36,17 @@ except:
 
 def main(maxiter):
   print(locals())
-  print("solving single physics compliance problem")
+  print("solving single physics stress problem")
 
   ############################################################################
   ###########################         FEA          ###########################
   ############################################################################
   # NB: only Q4 elements + integer-spaced mesh are assumed
-  nelx = 160
-  nely = 80
+  nelx = 10
+  nely = 10
 
-  length_x = 160.
-  length_y = 80.
+  length_x = float(nelx)
+  length_y = float(nely)
 
   ls2fe_x = length_x/float(nelx)
   ls2fe_y = length_y/float(nely)
@@ -81,8 +81,8 @@ def main(maxiter):
 
   # Boundary Conditions ============================================
   ## Set elastic boundary conditions
-  coord_e = np.array([[0., 0.], [length_x, 0.]])
-  tol_e = np.array([[1e-3, 1e3], [1e-3, 1e+3]])
+  coord_e = np.array([[0., length_y]])
+  tol_e = np.array([[2.*length_x/5. + 0.1*ls2fe_x, 1e-3]])
   fea_solver.set_boundary(coord=coord_e, tol=tol_e)
 
   BCid_e = fea_solver.get_boundary()
@@ -91,9 +91,9 @@ def main(maxiter):
   # Loading Conditions =============================================
   ## Set the elastic loading conditions
   coord = np.array([length_x*0.5, 0.0])  # length_y])
-  tol   = np.array([4.1, 1e-3])
-  load_val = -1  # dead load
-  GF_e_ = fea_solver.set_force(coord=coord, tol=tol, direction=1, f=-load_val)
+  tol   = np.array([1.1, 1e-3])
+  load_val = -0.5  # dead load
+  GF_e_ = fea_solver.set_force(coord=coord, tol=tol, direction=1, f=load_val)
   GF_e  = np.zeros(nDOF_e_wLag)
   GF_e[:nDOF_e] = GF_e_
 
@@ -104,33 +104,10 @@ def main(maxiter):
   movelimit = 0.5
 
   # Declare Level-set object
-  lsm_solver = py_LSM(nelx=nelx, nely=nely, moveLimit=movelimit)
+  lsm_solver = py_LSM(nelx=nelx, nely=nely, moveLimit=movelimit, isLbeam=True)
 
   # Assign holes ===================================================
-  if (int(nelx)/int(nely) == 2) and (nelx >= 80):
-    rad = float(nelx)/32.0 # radius of the hole
-    x1  = nelx/10.     # x-coord of the center of the 1st hole 1st row
-    y1  = 14.*nely/80. # y-coord of the center of the 1st row of holes
-    y2  = 27.*nely/80. # y-coord of the center of the 2nd row of holes
-    y3  = nely/2.      # y-coord of the center of the 3rd row of holes
-    y4  = 53.*nely/80. # y-coord of the center of the 4th row of holes
-    y5  = 66.*nely/80. # y-coord of the center of the 5th row of holes
-
-    hole = array(
-    	[[x1, y1, rad], [3*x1, y1, rad], [5*x1, y1, rad], [7*x1, y1, rad], [9*x1, y1, rad],
-    	[2*x1, y2, rad], [4*x1, y2, rad], [6*x1, y2, rad], [8*x1, y2, rad],
-    	[x1, y3, rad], [3*x1, y3, rad], [5*x1, y3, rad], [7*x1, y3, rad], [9*x1, y3, rad],
-    	[2*x1, y4, rad], [4*x1, y4, rad], [6*x1, y4, rad], [8*x1, y4, rad],
-    	[x1, y5, rad], [3*x1, y5, rad], [5*x1, y5, rad], [7*x1, y5, rad], [9*x1, y5, rad]])
-
-    # NB: level set value at the corners should not be 0.0
-    hole = append(hole, [[0., 0., 0.1], [0., 80., 0.1], [
-    	160., 0., 0.1], [160., 80., 0.1]], axis=0)
-
-    lsm_solver.add_holes(locx=list(hole[:, 0]), locy=list(
-      hole[:, 1]), radius=list(hole[:, 2]))
-  else:
-    lsm_solver.add_holes([], [], [])
+  lsm_solver.add_holes([], [], [])
 
   lsm_solver.set_levelset()
 
@@ -143,8 +120,8 @@ def main(maxiter):
 
     # OpenMDAO ===================================================
     ## Define Group
-    model = ComplianceGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
-    	nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid=BCid_e)
+    model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver, nelx=nelx,
+      nely=nely, force=GF_e, movelimit=movelimit, pval=6.0, BCid=BCid_e)
 
     ## Define problem for OpenMDAO object
     prob = Problem(model)
@@ -158,7 +135,7 @@ def main(maxiter):
 
     ## Total derivative using MAUD
     total = prob.compute_totals()
-    ff = total['compliance_comp.compliance', 'inputs_comp.Vn'][0]
+    ff = total['pnorm_comp.pnorm', 'inputs_comp.Vn'][0]
     gg = total['weight_comp.weight', 'inputs_comp.Vn'][0]
 
     ## Assign object function sensitivities
@@ -276,11 +253,11 @@ def main(maxiter):
     	plt.savefig(saveFolder + "figs/bpts_%d.png" % i_HJ)
 
     # print([compliance[0], area])
-    compliance = prob['compliance_comp.compliance']
-    print (compliance, area)
+    print (prob['pnorm_comp.pnorm'][0], area)
 
     fid = open(saveFolder + "log.txt", "a+")
-    fid.write(str(compliance) + ", " + str(area) + "\n")
+    fid.write(str(prob['pnorm_comp.pnorm'][0]) +
+                ", " + str(area) + "\n")
     fid.close()
 
     ## Saving phi
