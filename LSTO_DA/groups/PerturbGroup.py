@@ -41,6 +41,7 @@ class StressGroup(Group):
         self.options.declare('nely', types=int)
         self.options.declare('force', types= ndarray)
         self.options.declare('movelimit', types= float)
+        self.options.declare('BCid', types= np.ndarray)
         self.options.declare('pval', types= float)
         self.options.declare('E', types=float)
         self.options.declare('nu', types=float)
@@ -51,6 +52,7 @@ class StressGroup(Group):
         self.nelx = nelx = self.options['nelx']
         self.nely = nely = self.options['nely']
         self.movelimit = movelimit = self.options['movelimit']
+        self.BCid = BCid = self.options['BCid']
         self.pval = pval = self.options['pval']
         E = self.E = self.options['E']
         nu = self.nu = self.options['nu']
@@ -94,7 +96,7 @@ class StressGroup(Group):
         self.connect('states_comp.states', 'disp_comp.states')
 
         # SIMP_4. extract out lagrange multipliers
-        comp_ = SIMP_DispComp(num_nodes_x = nelx+1, num_nodes_y = nely+1)
+        comp_ = SIMP_DispComp(num_nodes_x = nelx+1, num_nodes_y = nely+1, nBCid = len(BCid))
         self.add_subsystem('disp_comp', comp_)
         self.connect('disp_comp.disp', 'VMstress_comp.disp')
 
@@ -248,7 +250,7 @@ class HeatCouplingGroup(Group):
         # 6. compliance
         comp_ = SumComp(w=w)
         self.add_subsystem('objective_comp', comp_)
-        self.add_objective('objective_comp.y') 
+        self.add_objective('objective_comp.y')
 
         # 6. total area
         comp_ = SIMP_WeightComp(num=nELEM)

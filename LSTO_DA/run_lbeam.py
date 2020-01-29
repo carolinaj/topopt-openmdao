@@ -115,13 +115,17 @@ def main(maxiter):
   ############################################################################
   ########################         T.O. LOOP          ########################
   ############################################################################
+  # Set maximum area constraint (percentage of the initial area)
+  area_constraint = 0.6
+
   for i_HJ in range(maxiter):
     (bpts_xy, areafraction, seglength) = lsm_solver.discretise()
 
     # OpenMDAO ===================================================
     ## Define Group
-    model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver, nelx=nelx,
-      nely=nely, force=GF_e, movelimit=movelimit, pval=6.0, BCid=BCid_e)
+    model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
+                        nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit,
+                        BCid=BCid_e, pval=6.0, E=E, nu=nu)
 
     ## Define problem for OpenMDAO object
     prob = Problem(model)
@@ -172,7 +176,8 @@ def main(maxiter):
       lsm_solver.set_BptsSens(bpts_sens)
       scales = lsm_solver.get_scale_factors()
       (lb2,ub2) = lsm_solver.get_Lambda_Limits()
-      constraint_distance = (0.4 * nelx * nely) - areafraction.sum()
+      max_area = area_constraint * (1 - pow(3./5., 2)) * nelx * nely
+      constraint_distance = max_area - areafraction.sum()
 
       model = LSM2D_slpGroup(lsm_solver = lsm_solver, num_bpts = nBpts,
         ub = ub2, lb = lb2, Sf = bpts_sens[:,0], Sg = bpts_sens[:,1],
@@ -208,7 +213,8 @@ def main(maxiter):
       scales = lsm_solver.get_scale_factors()
       (lb2,ub2) = lsm_solver.get_Lambda_Limits()
 
-      constraint_distance = (0.4 * nelx * nely) - areafraction.sum()
+      max_area = area_constraint * (1 - pow(3./5., 2)) * nelx * nely
+      constraint_distance = max_area - areafraction.sum()
       constraintDistance = np.array([constraint_distance])
       scaled_constraintDist = lsm_solver.compute_scaledConstraintDistance(constraintDistance)
 
@@ -299,6 +305,6 @@ def main(maxiter):
       return()
 
 if __name__ == "__main__":
-  main(300)
+  main(5)
 else:
   main(1)  # testrun

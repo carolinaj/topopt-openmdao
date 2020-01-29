@@ -1,5 +1,6 @@
 # stress
 
+from numpy import matlib
 from pylab import *
 from openmdao.api import ExplicitComponent
 sys.path.append('../Density_OpenLSTO')
@@ -16,7 +17,7 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
         self.options.declare('order', types=float)
         self.options.declare('E', types=float)
         self.options.declare('nu', types=float)
-        
+
     def setup(self):
         fea_solver = self.fea_solver = self.options['fea_solver']
         nelx = self.nelx = self.options['nelx']
@@ -40,7 +41,7 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
         rows = np.matlib.repmat(arange(nELEM), 8, 1)
         rows = rows.flatten(order='F')
         cols = elem_id.flatten()
-        
+
         self.declare_partials('vmStress','disp', rows = rows, cols = cols)
 
         rows = arange(nELEM)
@@ -57,11 +58,11 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
     def compute_partials(self, inputs, partials):
         u = inputs['disp']
         rho = inputs['density']
-        B0 = self.B0 
+        B0 = self.B0
         Cijkl = zeros((3,3))
         Cijkl = array([[1., self.nu, 0.], [self.nu, 1., 0.], [0., 0., 0.5*(1.-self.nu)]])
         Cijkl *= self.E/(1.-self.nu*self.nu)
-        CB0 = Cijkl.dot(B0)        
+        CB0 = Cijkl.dot(B0)
 
         vm, dev = self._vonMises(u, rho)
         J2 = np.power(vm,2.)/3.
@@ -74,9 +75,9 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
             for qqq in range(8):
                 val[8*ee + qqq] = dev[ee,0]*CB0[0,qqq] + dev[ee,1]*CB0[1,qqq] + 2*dev[ee,2]*CB0[2,qqq] - 1./3.*(dev[ee,0]+dev[ee,1])*(CB0[0,qqq]+CB0[1,qqq])
                 val[8*ee + qqq] *= sqrt(3.)/2. / sqrt(J2[ee]) * rho[ee]
-                
+
         partials['vmStress','disp'] = val
-        
+
         # for partial vm / partial rho
         val = zeros(self.nELEM)
         for ee in range(self.nELEM):
@@ -103,12 +104,12 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
         dev = sigma  # deviatoric stress
         dev[:,0] -= 1./3.*(sigma[:,0]+sigma[:,1])
         dev[:,1] -= 1./3.*(sigma[:,0]+sigma[:,1])
-        J2 = multiply(dev[:,0],dev[:,0]) + multiply(dev[:,1],dev[:,1]) + 2*multiply(dev[:,2],dev[:,2]) 
+        J2 = multiply(dev[:,0],dev[:,0]) + multiply(dev[:,1],dev[:,1]) + 2*multiply(dev[:,2],dev[:,2])
         J2 *= 0.5
         return (sqrt(3.*J2), dev)
 
     def _Bmatrix_centroid(self):
-        # ASSUMPTION: 
+        # ASSUMPTION:
         # superconvergent point = centroid of Q4
         # structured mesh
 
@@ -117,7 +118,7 @@ class VMStressComp(ExplicitComponent): # ERROR ~ 1%
         ly_ely = self.length_y/float(self.nely)
 
         dN_dx = 2./lx_elx * 0.25 * array([-1., 1., 1., -1.])
-        dN_dy = 2./ly_ely * 0.25 * array([-1., -1., 1., 1.])        
+        dN_dy = 2./ly_ely * 0.25 * array([-1., -1., 1., 1.])
 
         Bmatrix[0,0::2] = dN_dx
         Bmatrix[1,1::2] = dN_dy
@@ -132,7 +133,7 @@ class pVmComp(ExplicitComponent):
         self.options.declare('pval', types=float)
         self.options.declare('nelx', types=int)
         self.options.declare('nely', types=int)
-        
+
     def setup(self):
         pval = self.pval = self.options['pval']
         nelx = self.nelx = self.options['nelx']
@@ -142,27 +143,27 @@ class pVmComp(ExplicitComponent):
         self.add_input('x', shape=nELEM)
         self.add_output('xp', shape=nELEM)
         ran1 = arange(nELEM)
-        
+
         self.declare_partials(of='xp', wrt='x', rows=ran1, cols=ran1)
-    
+
     def compute(self, inputs, outputs):
         vm = inputs['x']
         vmp = np.power(vm, self.pval)
         outputs['xp'] = vmp
-        
-    
+
+
     def compute_partials(self, inputs, partials):
         vm = inputs['x']
-        val = np.power(vm, self.pval-1.) * self.pval 
+        val = np.power(vm, self.pval-1.) * self.pval
         partials['xp','x'] = val
-            
+
 
 class pnormComp(ExplicitComponent):
     def initialize(self):
         self.options.declare('pval', types=float)
         self.options.declare('nelx', types=int)
         self.options.declare('nely', types=int)
-        
+
     def setup(self):
         pval = self.pval = self.options['pval']
         nelx = self.nelx = self.options['nelx']
@@ -171,17 +172,17 @@ class pnormComp(ExplicitComponent):
 
         self.add_input('x', shape=1)
         self.add_output('pnorm', shape=1)
-        
+
         self.declare_partials(of='pnorm', wrt='x', rows=[0], cols=[0])
-    
+
     def compute(self, inputs, outputs):
         x = inputs['x']
         pnorm = np.power(x, 1./self.pval)
-        outputs['pnorm'] = pnorm        
-    
+        outputs['pnorm'] = pnorm
+
     def compute_partials(self, inputs, partials):
         x = inputs['x']
-        val = np.power(x, 1./self.pval-1.) * 1./self.pval 
+        val = np.power(x, 1./self.pval-1.) * 1./self.pval
         partials['pnorm','x'] = val
 
 class BodyIntegComp(ExplicitComponent):

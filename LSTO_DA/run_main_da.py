@@ -38,7 +38,7 @@ except:
 def main(maxiter):
 
     # select which problem to solve
-    obj_flag = 0
+    obj_flag = 1
     print(locals())
     print("solving %s problem" % objectives[obj_flag])
 
