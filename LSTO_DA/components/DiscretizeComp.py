@@ -34,6 +34,26 @@ class VnPerturbComp(ExplicitComponent):
     def compute(self, inputs, outputs):
         (bpts_xy, areafraction, seglength) = self.lsm_solver.discretise()
         self.seglength = seglength
+
+        # TODO: delete after debugging
+        print('\nEntered compute statement in VnPerturbComp:')
+
+        # Assign a minimum area fraction
+        count = 0
+        for elem_area in areafraction:
+          print('Entered for loop')
+          if elem_area < 1e-6:
+            # TODO: delete after debugging
+            print('   for iter %d' % count)
+            print('      initial  value = %f' % areafraction[count])
+
+            elem_area = 1e-6
+
+            # TODO: delete after debugging
+            print('      adjusted value = %f' % elem_area)
+
+          count += 1
+
         outputs['density'] = areafraction
 
         # computing partials and declare: sparse partials

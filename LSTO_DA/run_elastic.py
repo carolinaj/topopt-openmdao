@@ -135,6 +135,10 @@ def main(maxiter):
 
     lsm_solver.add_holes(locx=list(hole[:, 0]), locy=list(
       hole[:, 1]), radius=list(hole[:, 2]))
+  elif 1: # TODO: delete after debugging
+    hole = array([[nelx/2., nely/2., 1.5]])
+    lsm_solver.add_holes(locx=list(hole[:, 0]), locy=list(
+      hole[:, 1]), radius=list(hole[:, 2]))
   else:
     lsm_solver.add_holes([], [], [])
 
@@ -383,6 +387,6 @@ def main(maxiter):
       return()
 
 if __name__ == "__main__":
-  main(5)
+  main(1)
 else:
   main(1)  # testrun
