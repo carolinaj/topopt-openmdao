@@ -37,19 +37,19 @@ except:
 
 def main(maxiter):
   # Select which problem to solve
-  obj_flag = 1
+  obj_flag = 0
   print(locals())
   print("solving single physics %s problem" % objectives[obj_flag])
 
-  ############################################################################
-  ###########################         FEA          ###########################
-  ############################################################################
+  ##############################################################################
+  ############################         FEA          ############################
+  ##############################################################################
   # NB: only Q4 elements + integer-spaced mesh are assumed
-  nelx = 160
-  nely = 80
+  nelx = 10
+  nely = 5
 
-  length_x = 160.
-  length_y = 80.
+  length_x = float(nelx)
+  length_y = float(nely)
 
   ls2fe_x = length_x/float(nelx)
   ls2fe_y = length_y/float(nely)
@@ -77,12 +77,13 @@ def main(maxiter):
 
   nDOF_e = nNODE * 2  # each node has two displacement DOFs
 
-  # constitutive properties ========================================
+  # constitutive properties ==========================================
   E = 1.
   nu = 0.3
   fea_solver.set_material(E=E, nu=nu, rho=1.0) # sets elastic material only
+  # ==================================================================
 
-  # Boundary Conditions ============================================
+  # Boundary Conditions ==============================================
   ## Set elastic boundary conditions
   coord_e = np.array([[0., 0.], [length_x, 0.]])
   tol_e = np.array([[1e-3, 1e3], [1e-3, 1e+3]])
@@ -90,20 +91,22 @@ def main(maxiter):
 
   BCid_e = fea_solver.get_boundary()
   nDOF_e_wLag = nDOF_e + len(BCid_e)  # elasticity DOF
+  # ==================================================================
 
-  # Loading Conditions =============================================
+  # Loading Conditions ===============================================
   ## Set the elastic loading conditions
   coord = np.array([length_x*0.5, 0.0])  # length_y])
-  tol   = np.array([4.1, 1e-3])
+  tol   = np.array([ls2fe_x*0.1, ls2fe_y*0.1])
   load_val = -1  # dead load
-  GF_e_ = fea_solver.set_force(coord=coord, tol=tol, direction=1, f=-load_val)
+  GF_e_ = fea_solver.set_force(coord=coord, tol=tol, direction=1, f=load_val)
   GF_e  = np.zeros(nDOF_e_wLag)
   GF_e[:nDOF_e] = GF_e_
+  # ==================================================================
 
 
-  ############################################################################
-  ###########################         LSM          ###########################
-  ############################################################################
+  ##############################################################################
+  ############################         LSM          ############################
+  ##############################################################################
   movelimit = 0.5
 
   # Declare Level-set object
@@ -127,8 +130,8 @@ def main(maxiter):
     	[x1, y5, rad], [3*x1, y5, rad], [5*x1, y5, rad], [7*x1, y5, rad], [9*x1, y5, rad]])
 
     # NB: level set value at the corners should not be 0.0
-    hole = append(hole, [[0., 0., 0.1], [0., 80., 0.1], [
-    	160., 0., 0.1], [160., 80., 0.1]], axis=0)
+    hole = append(hole, [[0., 0., 0.1], [0., float(nely), 0.1], [
+    	float(nelx), 0., 0.1], [float(nelx), float(nely), 0.1]], axis=0)
 
     lsm_solver.add_holes(locx=list(hole[:, 0]), locy=list(
       hole[:, 1]), radius=list(hole[:, 2]))
@@ -138,9 +141,16 @@ def main(maxiter):
   lsm_solver.set_levelset()
 
 
-  ############################################################################
-  ########################         T.O. LOOP          ########################
-  ############################################################################
+  ##############################################################################
+  ##################         OPTIMIZATION PARAMETERS          ##################
+  ##############################################################################
+  area_constraint = 0.6 # Area constraint (max percentage of the initial area)
+  opt_move_limit  = 0.2 # Move limit for simplex and bisection optimizers
+
+
+  ##############################################################################
+  #########################         T.O. LOOP          #########################
+  ##############################################################################
   for i_HJ in range(maxiter):
     (bpts_xy, areafraction, seglength) = lsm_solver.discretise()
 
@@ -151,8 +161,8 @@ def main(maxiter):
     	 nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid=BCid_e)
     elif (objectives[obj_flag] == "stress"):
       model = StressGroup(fea_solver=fea_solver, lsm_solver=lsm_solver,
-       nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, pval=6.0,
-       BCid=BCid_e)
+       nelx=nelx, nely=nely, force=GF_e, movelimit=movelimit, BCid=BCid_e,
+       pval=6.0, E=E, nu=nu)
 
     ## Define problem for OpenMDAO object
     prob = Problem(model)
@@ -178,26 +188,45 @@ def main(maxiter):
     Sf = -ff[:nBpts]                # equal to M2DO-perturbation
     Cf = np.multiply(Sf, seglength) # Shape sensitivity (integral coefficients)
 
+    # TODO: delete after debugging
+    np.savetxt(saveFolder+"sens/sf_%d.txt" % i_HJ, Sf) # save to text file
+    np.savetxt(saveFolder+"sens/cf_%d.txt" % i_HJ, Cf) # save to text file
+
     ## Assign constraint sensitivities
     Sg = -gg[:nBpts]
     Sg[Sg < - 1.5] = -1.5 # apply caps (bracketing) to constraint sensitivities
     Sg[Sg > 0.5]   =  0.5 # apply caps (bracketing) to constraint sensitivities
     Cg = np.multiply(Sg, seglength) # Shape sensitivity (integral coefficients)
 
+    # TODO: delete after debugging
+    np.savetxt(saveFolder+"sens/sg_%d.txt" % i_HJ, Sg) # save to text file
+    np.savetxt(saveFolder+"sens/cg_%d.txt" % i_HJ, Cg) # save to text file
+
     # Suboptimize ================================================
     if 1:
+      # TODO: delete after debugging
+      # print("\nEntered first suboptimize if statement. Perturbation method?")
+
       suboptim = Solvers(bpts_xy=bpts_xy, Sf=Sf, Sg=Sg, Cf=Cf, Cg=Cg,
         length_x=length_x, length_y=length_y, areafraction=areafraction,
-        movelimit=movelimit)
+        movelimit=opt_move_limit)
       # suboptimization
       if 1:  # simplex
+        # TODO: delete after debugging
+        # print("   Entered simplex if statement\n")
+
         Bpt_Vel = suboptim.simplex(isprint=False)
       else:  # bisection.
+        # TODO: delete after debugging
+        print("   Entered bisection if statement\n")
+
         Bpt_Vel = suboptim.bisection(isprint=False)
 
       timestep = 1.0
-      np.savetxt('a.txt',Bpt_Vel)
     elif 1: # works when Sf <- Sf / length is used (which means Cf <- actual Sf)
+      # TODO: delete after debugging
+      print("\nEntered suboptimize else if statement. Least squares?")
+
       bpts_sens = np.zeros((nBpts,2))
       # issue: scaling problem
       #
@@ -207,7 +236,7 @@ def main(maxiter):
       lsm_solver.set_BptsSens(bpts_sens)
       scales = lsm_solver.get_scale_factors()
       (lb2,ub2) = lsm_solver.get_Lambda_Limits()
-      constraint_distance = (0.4 * nelx * nely) - areafraction.sum()
+      constraint_distance = (area_constraint * nelx * nely) - areafraction.sum()
 
       model = LSM2D_slpGroup(lsm_solver = lsm_solver, num_bpts = nBpts,
         ub = ub2, lb = lb2, Sf = bpts_sens[:,0], Sg = bpts_sens[:,1],
@@ -233,6 +262,9 @@ def main(maxiter):
       # print(timestep)
       del subprob
     else: # branch: perturb-suboptim
+      # TODO: delete after debugging
+      print("\nEntered suboptimize else if statement. Perturb with least squares?")
+
       bpts_sens = np.zeros((nBpts,2))
       # issue: scaling problem
       #
@@ -243,7 +275,7 @@ def main(maxiter):
       scales = lsm_solver.get_scale_factors()
       (lb2,ub2) = lsm_solver.get_Lambda_Limits()
 
-      constraint_distance = (0.4 * nelx * nely) - areafraction.sum()
+      constraint_distance = (area_constraint * nelx * nely) - areafraction.sum()
       constraintDistance = np.array([constraint_distance])
       scaled_constraintDist = lsm_solver.compute_scaledConstraintDistance(constraintDistance)
 
@@ -271,6 +303,13 @@ def main(maxiter):
       # scaling
       # Bpt_Vel = Bpt_Vel#/np.max(np.abs(Bpt_Vel))
 
+    # TODO: delete after debugging
+    bpt_mat = np.append(bpts_xy, Bpt_Vel.reshape((Bpt_Vel.size,1)), axis=1)
+    np.savetxt(fname=(saveFolder+"sens/bpt_vel_%d.txt" % i_HJ),
+      X=bpt_mat,
+      fmt=('%20.5f','%20.5f','%20.10e'),
+      header='Columns: X coord, Y coord, Bpt velocity')
+
     lsm_solver.advect(Bpt_Vel, timestep)
     lsm_solver.reinitialise()
     print ('loop %d is finished' % i_HJ)
@@ -281,11 +320,13 @@ def main(maxiter):
 
     # Printing/Plotting ==========================================
     if 1:  # quickplot
-    	plt.figure(1)
-    	plt.clf()
-    	plt.scatter(bpts_xy[:, 0], bpts_xy[:, 1], 10)
-    	plt.axis("equal")
-    	plt.savefig(saveFolder + "figs/bpts_%d.png" % i_HJ)
+      plt.figure(1)
+      plt.clf()
+      plt.scatter(bpts_xy[:, 0], bpts_xy[:, 1], 10)
+      plt.axis("equal")
+      plt.xlim(-2, nelx+2)
+      plt.ylim(-2, nely+2)
+      plt.savefig(saveFolder + "figs/bpts_%d.png" % i_HJ)
 
     # print([compliance[0], area])
     if (objectives[obj_flag] == "compliance"):
@@ -342,6 +383,6 @@ def main(maxiter):
       return()
 
 if __name__ == "__main__":
-  main(300)
+  main(5)
 else:
   main(1)  # testrun
