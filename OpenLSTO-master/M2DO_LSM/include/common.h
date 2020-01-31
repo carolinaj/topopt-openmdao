@@ -64,6 +64,10 @@ struct BoundaryPoint
     unsigned int neighbours[2];         //!< The indices of the neighbouring points.
     unsigned int nNeighbours;           //!< The number of neighbouring boundary points.
     std::vector<double> sensitivities;  //!< Objective and constraint sensitivities.
+
+    // Features added by Sandy
+    std::vector<int> perturb_indices;  //!< The indices of the grid that are perturbed.
+    std::vector<double> perturb_sensitivities;  //!< Sensitivities of perturbed elements.
 };
 
 //! \brief A container for storing information associated with a boundary segment.

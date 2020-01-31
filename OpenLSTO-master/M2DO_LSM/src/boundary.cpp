@@ -14,12 +14,12 @@
   You should have received a copy of the GNU General Public License
   along with this program. If not, see <http://www.gnu.org/licenses/>.
 */
-  
+
 /*! \file Boundary.cpp
     \brief A class for the discretised boundary.
  */
 
-#ifdef PYBIND 
+#ifdef PYBIND
 #include "../include/boundary.h"
 #endif
 
@@ -698,6 +698,164 @@ double Boundary::computePerimeter(const BoundaryPoint& point)
     return length;
 }
 
+void Boundary::computePerturbationSensitivities(double perturb, double area_min)
+{
+
+  // loop through all boundary points
+  for (int i=0 ; i< points.size()  ; i++)
+  {
+      std::vector<double> bPoint (2, 0) ;
+
+      // resize perubation sensitivities
+      points[i].perturb_indices.resize(0);
+      points[i].perturb_sensitivities.resize(0);
+
+      std::vector<double> desVar;
+
+
+      // define boundary point
+      bPoint[0] = points[i].coord.x;
+      bPoint[1] = points[i].coord.y;
+
+      // narrow band size
+      int nb_size = 2;
+
+      // define the mini perturbation mesh parameters
+      int nelx_pert_0 = std::max( int(round( bPoint[0]) )  - nb_size, 0 );
+      nelx_pert_0 = std::min( nelx_pert_0, int(nelx) - 2*nb_size ) ;
+
+      int nelx_pert_1 = nelx_pert_0 + 2*nb_size ;
+
+      int nely_pert_0 = std::max( int(round( bPoint[1]) )  - nb_size, 0 );
+      nely_pert_0 = std::min( nely_pert_0, int(nely) - 2*nb_size ) ;
+
+      int nely_pert_1 = nely_pert_0 + 2*nb_size ;
+
+      // These are the dimensions of the pertubation mesh
+      int nelx_pert = nelx_pert_1 - nelx_pert_0 ;
+      int nely_pert = nely_pert_1 - nely_pert_0 ;
+
+      // define perturbation mesh
+      Mesh lsmMesh_pert(nelx_pert, nely_pert, false) ;
+
+      // define holes_pert
+      std::vector<Hole> holes_pert ;
+
+      // Initialise levelset perturbation
+      LevelSet levelSet_pert(lsmMesh_pert, holes_pert, 0.5, 4, false) ;
+
+      // Initialise levelSet_pert
+      levelSet_pert.reinitialise() ;
+
+      // assign appropriate signed distance values to levelSet_pert
+      int count_pert = 0;
+      for(int iy = 0; iy <= nely_pert; iy++)
+      {
+        for(int ix = 0; ix <= nelx_pert; ix++)
+        {
+          // define global coordinates
+          int global_x = nelx_pert_0 + ix;
+          int global_y = nely_pert_0 + iy;
+
+          // assign the signed distance function value from the main signed disance vector
+          levelSet_pert.signedDistance[count_pert] = levelSet.signedDistance[(nelx + 1)*global_y + global_x ] ;
+
+          count_pert ++;
+        }
+      }
+
+      // intialize boundary_pert
+      Boundary boundary_pert(levelSet_pert) ;
+
+      // discretise boundary_pert
+      boundary_pert.discretise(false , 0) ;
+
+      // compute areafraction
+      boundary_pert.computeAreaFractions();
+
+      // assign area fractins in the perturbed mesh
+      std::vector<double> area_frac_init_pert;
+      for(int ii = 0; ii < lsmMesh_pert.elements.size(); ii ++) area_frac_init_pert.push_back(lsmMesh_pert.elements[ii].area) ;
+
+
+      double timeStep_pert = 1.0 ;
+
+      // assign perturbation velocity at the boundary point
+
+      double bpt_length = 0.0;
+
+      for (int ii=0 ; ii < boundary_pert.points.size() ; ii++)
+      {
+        std::vector<double> bPoint_temp (2, 0) ;
+        bPoint_temp[0] = boundary_pert.points[ii].coord.x;
+        bPoint_temp[1] = boundary_pert.points[ii].coord.y;
+
+        double dist_pert =  pow(-bPoint_temp[0] + bPoint[0] - nelx_pert_0 , 2 ) + pow(-bPoint_temp[1] + bPoint[1] - nely_pert_0 , 2) ;
+
+        dist_pert = sqrt( dist_pert );
+
+
+        if(dist_pert < perturb ) {
+          boundary_pert.points[ii].velocity = perturb*(1.0 - std::pow( dist_pert/perturb , 2.0 ) );
+          bpt_length = boundary_pert.points[ii].length ;
+        }
+        else{
+          boundary_pert.points[ii].velocity = 0.0;
+        }
+
+
+      }
+
+      // Extend boundary point velocities to all narrow band nodes.
+      levelSet_pert.computeVelocities(boundary_pert.points) ;
+
+      // Compute gradient of the signed distance function within the narrow band.
+      levelSet_pert.computeGradients() ;
+
+      // Update the level set function.
+      bool isReinitialised_pert = levelSet_pert.update_no_WENO(timeStep_pert) ;
+
+      // discretise boundary_pert
+      boundary_pert.discretise(false, 0) ;
+
+      // compute areafraction
+      boundary_pert.computeAreaFractions();
+
+
+      // initialize change in area
+      double delta_area = 0.0;
+      count_pert = 0;
+
+      // loop through all the elements in the narrow band and collect the change in area fraction
+      for(int iy = 0; iy < nely_pert; iy++)
+      {
+        for(int ix = 0; ix < nelx_pert; ix++)
+        {
+
+          int global_x = nelx_pert_0 + ix ;
+
+          int global_y = nely_pert_0 + iy;
+
+          int global_index =  (nelx)*global_y + global_x ;
+
+          double delta_x =  area_frac_init_pert[count_pert] - lsmMesh_pert.elements[count_pert].area ;
+
+          // collect only the areas where the change in area is significant or element area is big enough
+          if(delta_x > 1.0e-3*perturb && area_frac_init_pert[count_pert] >= area_min)
+          {
+            points[i].perturb_sensitivities.push_back(delta_x);
+            points[i].perturb_indices.push_back(global_index);
+          }
+
+          count_pert++;
+        }
+      }
+
+    }
+
+}
+
+
 void Boundary::computeMeshStatus(const std::vector<double>* signedDistance) const
 {
     // Calculate node status.
@@ -952,6 +1110,26 @@ double Boundary::cutArea(const Element& element)
         return (1.0 - polygonArea(vertices, nVertices, element.coord));
     else
         return polygonArea(vertices, nVertices, element.coord);
+}
+
+double Boundary::cutAreaNumInt(const Element& element)
+{
+
+  // This function calculates the cut element area fraction using numerical integration
+
+  double phi1 = levelSet.signedDistance[element.nodes[0]] ;
+  double phi2 = levelSet.signedDistance[element.nodes[1]] ;
+  double phi3 = levelSet.signedDistance[element.nodes[2]] ;
+  double phi4 = levelSet.signedDistance[element.nodes[3]] ;
+
+  double area_temp = std::max( 0.0 , phi1) + std::max( 0.0 , phi2)
+  + std::max( 0.0 , phi3) + std::max( 0.0 , phi4);
+
+  area_temp /= ( std::abs( phi1) + std::abs(  phi2)
+  + std::abs(  phi3) + std::abs(  phi4) );
+
+  return area_temp;
+
 }
 
 bool Boundary::isClockwise(const Coord& point1, const Coord& point2, const Coord& centre) const
