@@ -18,7 +18,7 @@
 #ifndef _BOUNDARY_H
 #define _BOUNDARY_H
 
-#ifdef PYBIND 
+#ifdef PYBIND
 #include "./common.h"
 #include "./level_set.h"
 #endif
@@ -73,6 +73,18 @@ public:
      */
     double computePerimeter(const BoundaryPoint&);
 
+    //! Compute sensitivity using the perturbation method
+    /*! \param perturb
+            The perturbation parameter.
+
+        \param area_min
+               The change in area fractions will be ignored if an element area is less than area_min.
+
+        \return
+            The perturbed area fractions of the surrounding elements.
+     */
+    void computePerturbationSensitivities(double perturb, double area_min = 0.2);
+
     /// Vector of boundary points.
     std::vector<BoundaryPoint> points;
 
@@ -90,6 +102,12 @@ public:
 
     /// The total area fraction of the mesh.
     double area;
+
+    /// Width of the mesh in number elements
+    int nelx;
+
+    /// Height of the mesh in number of elements
+    int nely;
 
 private:
     /// A reference to the level set object.
@@ -137,19 +155,28 @@ private:
      */
     double cutArea(const Element&);
 
-    //! Whether a point is clockwise of another. The origin point is 12 o'clock.
-    /*! \param point1
-            The coordinates of the first point.
-
-        \param point2
-            The coordinates of the second point.
-
-        \param centre
-            The coordinates of the element centre.
+    //! Calculate the material area for an element cut by the boundary using numerical integration.
+    /*! \param element
+            A reference to the element.
 
         \return
-            Whether the first point is clockwise of the second.
+            The area fraction.
      */
+   double cutAreaNumInt(const Element&);
+
+   //! Whether a point is clockwise of another. The origin point is 12 o'clock.
+   /*! \param point1
+           The coordinates of the first point.
+
+       \param point2
+           The coordinates of the second point.
+
+       \param centre
+           The coordinates of the element centre.
+
+       \return
+           Whether the first point is clockwise of the second.
+    */
     bool isClockwise(const Coord&, const Coord&, const Coord&) const;
 
     //! Return the area of a polygon.
@@ -180,7 +207,7 @@ private:
     void computePointLengths();
 };
 
-#ifndef PYBIND 
+#ifndef PYBIND
 #include "../src/boundary.cpp"
 #endif
 
