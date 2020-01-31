@@ -180,7 +180,7 @@ int main () {
 		Define LSM parameters:
 	*/
 
-	double    move_limit = 0.5 ;   // Maximum displacement per iteration in units of the mesh spacing.
+	double    move_limit = 0.25 ;   // Maximum displacement per iteration in units of the mesh spacing.
 	double    band_width = 6 ;     // Width of the narrow band.
 	bool is_fixed_domain = false ; // Whether or not the domain boundary is fixed.
 
@@ -240,7 +240,7 @@ int main () {
 
 	double       max_time = 6000 ;   // maximum running time.
 	int    max_iterations = 300 ;    // maximum number of iterations.
-	double       max_area = 0.4 ;    // maximum material area.
+	double       max_area = 0.5 ;    // maximum material area.
 	double       max_diff = 0.0001 ; // relative difference between iterations must be less than this value to reach convergence.
 
 	/*
@@ -343,6 +343,9 @@ int main () {
 		// Compute compliance sensitivities (stress*strain) at the Gauss points:
 		sens.ComputeComplianceSensitivities (false) ;
 
+		///////////////////////////////////////////////////////////////////////////
+		// This formulation is the least squares interpolation method
+		/*
 		for (int i = 0 ; i < boundary.points.size() ; i++) {
 
 			vector<double> boundary_point (2, 0.0) ;
@@ -357,9 +360,48 @@ int main () {
 			boundary.points[i].sensitivities[1] = -1;
 
 		}
+				// clearing sens.boundarysens vector
+				sens.boundary_sensitivities.clear () ;
+				*/
+		///////////////////////////////////////////////////////////////////////
 
-		// clearing sens.boundarysens vector
-		sens.boundary_sensitivities.clear () ;
+		///////////////////////////////////////////////////////////////////////////
+		// This formulation is the perturbation method
+		double perturb = 0.25;
+		double area_min = 0.1;
+		boundary.nelx = nelx;
+		boundary.nely = nely;
+		boundary.computePerturbationSensitivities(perturb,area_min);
+		for (int i = 0 ; i < boundary.points.size() ; i++) {
+
+			vector<double> boundary_point (2, 0.0) ;
+			boundary_point[0] = boundary.points[i].coord.x ;
+			boundary_point[1] = boundary.points[i].coord.y ;
+		// Initialise delta_sensi and  delta_area
+			double delta_sensi = 0.0;
+			double delta_area = 0.0;
+
+			// for all the appropriate elements in the perturbed mesh
+			for(int j = 0; j < boundary.points[i].perturb_indices.size(); j++){
+				// index of the perturbed element index
+				int cur_index = boundary.points[i].perturb_indices[j];
+
+				delta_area += boundary.points[i].perturb_sensitivities[j];
+
+				for( int k = 0 ; k < pow(element_order,2); k++){
+					delta_sensi += sens.sensitivities[cur_index].sensitivity_at_gauss_point[k]
+					*boundary.points[i].perturb_sensitivities[j] / pow(element_order,2);
+				}
+
+			}
+
+			boundary.points[i].sensitivities[0] = -delta_sensi  / perturb;
+
+			// make sure area sensitivity is between -1.5 and -0.5
+			boundary.points[i].sensitivities[1] = -std::min(delta_area  / perturb /  boundary.points[i].length , 1.5 );
+			boundary.points[i].sensitivities[1] = std::min(boundary.points[i].sensitivities[1]  , -0.5 );
+		}
+		///////////////////////////////////////////////////////////////////////////
 
 		// Time step associated with the iteration
 		double time_step ;
@@ -402,8 +444,8 @@ int main () {
 
 		// Reinitialise the signed distance function, if necessary
 		if (!is_reinitialised) {
-			// Reinitialise at least every 20 iterations
-			if (n_reinit == 20) {
+			// Reinitialise at least every 1 iteration
+			if (n_reinit == 1) {
 				level_set.reinitialise () ;
 				n_reinit = 0 ;
 			}
