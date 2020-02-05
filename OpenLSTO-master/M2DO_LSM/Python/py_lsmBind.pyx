@@ -29,6 +29,9 @@ cdef class py_LSM:
     cdef double moveLimit
     cdef int nBpts, ndvs
 
+    cdef vector[double] areafraction
+    cdef vector[double] segLength
+
     cdef vector[Hole] holes
 
     cdef vector[double] scale_factors
@@ -132,20 +135,27 @@ cdef class py_LSM:
         self.boundaryptr.discretise(False, self.ndvs)
         self.boundaryptr.computeAreaFractions()
 
+        self.segLength.clear()
+        self.segLength.reserve(self.nBpts)
+        self.areafraction.clear()
+        self.areafraction.reserve(self.nELEM)
+
         areafraction = np.zeros(self.nELEM)
         nBpts = self.nBpts = self.boundaryptr.nPoints
 
         for ee in range(self.nELEM):
             areafraction[ee] = max([1e-3, self.meshptr.elements[ee].area])
-
+            self.areafraction[ee] = areafraction[ee]
+        
         bpts_xy = np.zeros((nBpts, 2))
         segLength = np.zeros(nBpts)
-
+        
         for bb in range(nBpts):
             bpts_xy[bb, 0] = self.boundaryptr.points[bb].coord.x
             bpts_xy[bb, 1] = self.boundaryptr.points[bb].coord.y
             segLength[bb] = self.boundaryptr.points[bb].length
-
+            self.segLength[bb] = segLength[bb]
+    
         self.displacements.reserve(nBpts)
 
         self.__isActive__()
@@ -436,6 +446,22 @@ cdef class py_LSM:
         return constraint_distances
     '''
     
+    # BOUDNRAY_PERTURBATION =========================================
+    def computeBoundarysensitivities(self, double perturb, double area_min = 0.2):
+        # this computes the perturbation sensitivity
+        # must be called after discretization
+        self.boundaryptr.computePerturbationSensitivities(perturb, area_min);
+        rows = [] # area 
+        cols = [] # boundary id
+        vals = [] # sensitivity
+        for ii in range(0, self.nBpts):
+            for jj in range(0, self.boundaryptr.points[ii].perturb_indices.size()):
+                rows.append(self.boundaryptr.points[ii].perturb_indices[jj]) ;
+                cols.append(ii)
+                vals.append(self.boundaryptr.points[ii].perturb_sensitivities[jj] / (perturb * self.segLength[ii])) ;
+    
+        return (rows, cols, vals)
+
     # UPDATING_RELATED FUNCTIONS ====================================
     def set_boundaryVelocities(self, np.ndarray[double] bptsVel):
         for bb in range(self.nBpts):
@@ -464,6 +490,7 @@ cdef class py_LSM:
     def reinitialise(self):
         self.levelsetptr.reinitialise()        
 
+    ## FIXME: neither dealloc, nor __dealloc__ frees the memory once the objects are declared. 
     def dealloc(self):
         # del self.meshptr
         # del self.levelsetptr

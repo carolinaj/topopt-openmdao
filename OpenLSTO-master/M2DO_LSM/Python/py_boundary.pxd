@@ -12,12 +12,11 @@ cdef extern from "./../include/boundary.h":
         void discretise(bool, int)
         double computeAreaFractions()
         void computeNormalVectors()
+        void computePerturbationSensitivities(double, double)
 
         unsigned int nPoints
         double area
 
         vector[BoundarySegment] segments
         vector[BoundaryPoint] points
-
-
-
+        

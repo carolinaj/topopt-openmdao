@@ -2,11 +2,17 @@ from distutils.core import setup, Extension
 from Cython.Build import cythonize
 import numpy as np 
 import glob
+import sys, platform
 
 pyxname = 'py_lsmBind'
 sources = glob.glob("./../src/*.cpp")
-sources.remove("./../src/sensitivity.cpp")
-sources.remove("./../src/optimise.cpp")
+if sys.platform == 'win32':
+    sources.remove("./../src\\sensitivity.cpp")
+    sources.remove("./../src\\optimise.cpp")
+else:
+    sources.remove("./../src/sensitivity.cpp")
+    sources.remove("./../src/optimise.cpp")
+
 sources.append(pyxname + '.pyx')
 
 setup(

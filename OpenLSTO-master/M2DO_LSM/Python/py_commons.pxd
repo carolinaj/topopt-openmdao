@@ -19,6 +19,8 @@ cdef extern from "./../include/common.h":
         bool isFixed
         vector[double] sensitivities
         double velocity;
+        vector[int] perturb_indices
+        vector[double] perturb_sensitivities
 
     cdef cppclass BoundarySegment:
         double length
