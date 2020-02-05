@@ -395,7 +395,7 @@ int main () {
 
 			}
 
-			boundary.points[i].sensitivities[0] = -delta_sensi  / perturb;
+			boundary.points[i].sensitivities[0] = -delta_sensi  / boundary.points[i].length / perturb;
 
 			// make sure area sensitivity is between -1.5 and -0.5
 			boundary.points[i].sensitivities[1] = -std::min(delta_area  / perturb /  boundary.points[i].length , 1.5 );
