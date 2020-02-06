@@ -7,6 +7,9 @@
 #define _OPTIMISE_H
 
 
+#ifdef PYBIND
+#include "./common.h"
+#endif
 class Optimise
 {
 public:
@@ -40,6 +43,8 @@ private:
 
 };
 
+#ifndef PYBIND
 #include "../src/optimise.cpp"
+#endif
 
 #endif  /* _OPTIMISE_H */

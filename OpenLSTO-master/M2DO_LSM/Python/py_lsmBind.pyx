@@ -446,6 +446,9 @@ cdef class py_LSM:
         return constraint_distances
     '''
     
+    # SUBOPTIMIZATION_VIA_NR ========================================
+    d
+
     # BOUDNRAY_PERTURBATION =========================================
     def computeBoundarysensitivities(self, double perturb, double area_min = 0.2):
         # this computes the perturbation sensitivity
@@ -458,7 +461,7 @@ cdef class py_LSM:
             for jj in range(0, self.boundaryptr.points[ii].perturb_indices.size()):
                 rows.append(self.boundaryptr.points[ii].perturb_indices[jj]) ;
                 cols.append(ii)
-                vals.append(self.boundaryptr.points[ii].perturb_sensitivities[jj] / (perturb) ;
+                vals.append(self.boundaryptr.points[ii].perturb_sensitivities[jj] / (perturb)) ;
     
         return (rows, cols, vals)
 
