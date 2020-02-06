@@ -308,8 +308,10 @@ cdef class py_LSM:
             this may generate problem as initial lambdas are at the origin (0.0): see the last lines of computeScaleFactors() ''' 
 
         return (negativeLambdaLimits, positiveLambdaLimits)
-
-    def solve_with_openLSTO(self, np.ndarray constraint_distance):
+    # SUBOPTIMIZATION_VIA_NR ========================================
+    def suboptimization_OpenLSTO(self, np.ndarray constraint_distance):
+        # this returns bounday velocity
+        bndVel = np.zeros((self.nBpts,1))
         self.optimiseptr = new Optimise(self.boundaryptr.points, self.time_step, self.moveLimit)
         cdef vector[double] constraint_distances
         # constraint_distances.push_back( (self.mesh_area * self.max_area) - self.boundaryptr.area)
@@ -322,6 +324,12 @@ cdef class py_LSM:
         self.optimiseptr.max_area = self.max_area
 
         self.optimiseptr.Solve_With_NewtonRaphson()
+        for ii in range(0, self.nBpts):
+            bndVel[ii] = self.boundaryptr.points[ii].velocity
+            # reset the velocity to zero
+            self.boundaryptr.points[ii].velocity = 0.0
+
+        return bndVel
 
     def compute_displacement(self, np.ndarray[double] lambdas, ):
         # scaled displacement
@@ -446,8 +454,7 @@ cdef class py_LSM:
         return constraint_distances
     '''
     
-    # SUBOPTIMIZATION_VIA_NR ========================================
-    d
+
 
     # BOUDNRAY_PERTURBATION =========================================
     def computeBoundarysensitivities(self, double perturb, double area_min = 0.2):
