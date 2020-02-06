@@ -5,6 +5,11 @@
   */
 
 
+#ifdef PYBIND
+#include "../include/optimise.h"
+#endif
+
+
 Optimise::Optimise(std::vector<BoundaryPoint>& boundaryPoints_,
                    double& timeStep_,
                    double& moveLimit_) :
